@@ -1,0 +1,1 @@
+../build-nccl-tests.sh

@@ -1,0 +1,615 @@
+# Copyright 2023 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+# This blueprint must be used with a version of the Toolkit v1.25.0 or higher
+
+### TODO ###
+
+# 35 行目: customer-tf-state-bucket を任意の Cloud Storage 名 (作成済み) へご変更ください (Teffaform の State 管理用です)
+# 38 行目: customer-projectid をプロジェクト ID へご変更ください
+# 40 行目: customer-region を今回割り当てられたリージョンへご変更ください
+# 41 行目: customer-zone を今回割り当てられたゾーンへご変更ください
+# 59 行目: filestore-ip を前の手順で作成された Filestore の IP アドレスへご変更ください (Output として出力されます)
+# 339 行目: static-node-count を今回割り当てられたノード数にご変更ください
+# 354 行目: service account principal を利用する <Project Number>-compute@developer.gserviceaccount.com へご変更ください
+
+### TODO ###
+
+blueprint_name: slurm-a3-cluster
+
+terraform_backend_defaults:
+  type: gcs
+  configuration:
+    bucket: geniac-tf-state-bucket
+
+vars:
+  project_id: nii-geniac  # GCPで要チェック
+  deployment_name: slurm-a3-cluster
+  a3-reservation_name: nii-a3-highgpu-8g-reservation-0415-0815  # GCPで要チェック
+  region: customer-region
+  zone: customer-zone
+  zones:
+  - $(vars.zone)
+  disk_size_gb: 200
+  final_image_family: slurm-dlvm
+  slurm_cluster_name: slurm0
+  enable_reconfigure: true
+  enable_cleanup_compute: true
+  enable_cleanup_subscriptions: true
+  a3_maintenance_interval: ""
+  # network parameters should match base blueprint unless network names were modified
+  network_name_system: slurm-sys-net
+  subnetwork_name_system: slurm-sys-subnet
+  subnetwork_self_link_gpunet0: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet0
+  subnetwork_self_link_gpunet1: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet1
+  subnetwork_self_link_gpunet2: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet2
+  subnetwork_self_link_gpunet3: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet3
+  # MUST set to IP address of Filestore instance from base deployment!
+  server_ip_homefs: filestore-ip
+  remote_mount_homefs: /nfsshare
+  local_mount_homefs: /home
+
+deployment_groups:
+- group: build_script
+  modules:
+  - id: sysnet
+    source: modules/network/pre-existing-vpc
+    settings:
+      network_name: $(vars.network_name_system)
+      subnetwork_name: $(vars.subnetwork_name_system)
+
+  - id: image_build_script
+    source: modules/scripts/startup-script
+    settings:
+      install_ansible: true
+      configure_ssh_host_patterns:
+      - 10.0.0.*
+      - 10.1.0.*
+      - 10.2.0.*
+      - 10.3.0.*
+      - $(vars.slurm_cluster_name)*
+      runners:
+      - type: shell
+        destination: workaround_apt_change.sh
+        content: |
+          #!/bin/bash
+          set -e -o pipefail
+          rm -f /etc/apt/sources.list.d/kubernetes.list
+          apt-get update --allow-releaseinfo-change
+      - type: shell
+        destination: disable_dlvm_builtin_services.sh
+        content: |
+          #!/bin/bash
+          # many extra services are being started via /etc/rc.local; disable
+          # them on future boots of image
+          echo -e '#!/bin/bash\n/usr/bin/nvidia-persistenced --user root\nexit 0' > /etc/rc.local
+          # disable jupyter and notebooks-collection-agent services
+          systemctl stop jupyter.service notebooks-collection-agent.service
+          systemctl disable jupyter.service notebooks-collection-agent.service
+      - type: shell
+        destination: install_pmix.sh
+        content: |
+          #!/bin/bash
+          # apt-get update is run above; add here if needed
+          apt-get install --assume-yes libpmix-dev
+      - type: data
+        destination: /var/tmp/slurm_vars.json
+        content: |
+          {
+            "reboot": false,
+            "slurm_version": "23.02.7",
+            "install_cuda": false,
+            "nvidia_version": "latest",
+            "install_ompi": true,
+            "install_lustre": true,
+            "install_gcsfuse": true,
+            "monitoring_agent": "cloud-ops"
+          }
+      - type: shell
+        destination: install_slurm.sh
+        content: |
+          #!/bin/bash
+          set -e -o pipefail
+          ansible-galaxy role install googlecloudplatform.google_cloud_ops_agents
+          ansible-pull \
+              -U https://github.com/GoogleCloudPlatform/slurm-gcp -C 5.10.4 \
+              -i localhost, --limit localhost --connection=local \
+              -e @/var/tmp/slurm_vars.json \
+              ansible/playbook.yml
+      # this duplicates the ulimits configuration of the HPC VM Image
+      - type: data
+        destination: /etc/security/limits.d/99-unlimited.conf
+        content: |
+          * - memlock unlimited
+          * - nproc unlimited
+          * - stack unlimited
+          * - nofile 1048576
+          * - cpu unlimited
+          * - rtprio unlimited
+      - type: data
+        destination: /etc/systemd/system/slurmd.service.d/file_ulimit.conf
+        content: |
+          [Service]
+          LimitNOFILE=infinity
+      - type: data
+        destination: /etc/systemd/system/delay-a3.service
+        content: |
+          [Unit]
+          Description=Delay A3 boot until all network interfaces are routable
+          After=network-online.target
+          Wants=network-online.target
+          Before=google-startup-scripts.service
+
+          [Service]
+          ExecCondition=/bin/bash -c '/usr/bin/curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/machine-type | grep -q "/a3-highgpu-8g$"'
+          ExecStart=/usr/lib/systemd/systemd-networkd-wait-online -i enp6s0 -i enp12s0 -i enp134s0 -i enp140s0 -o routable --timeout=120
+          ExecStartPost=/bin/sleep 60
+
+          [Install]
+          WantedBy=multi-user.target
+      - type: shell
+        destination: configure_docker.sh
+        content: |
+          #!/bin/bash
+          set -e -o pipefail
+          # allow any user to use Docker
+          DOCKER_SOCKET_DROPIN_DIR="/etc/systemd/system/docker.socket.d"
+          if [ ! -d "${DOCKER_SOCKET_DROPIN_DIR}" ]; then
+              mkdir "${DOCKER_SOCKET_DROPIN_DIR}"
+          fi
+          DOCKER_SOCKET_DROPIN_FILE="group-override.conf"
+          if [ ! -f "${DOCKER_SOCKET_DROPIN_DIR}/${DOCKER_SOCKET_DROPIN_FILE}" ]; then
+              # indentation matters in EOT below; do not blindly edit!
+              cat <<EOT > "${DOCKER_SOCKET_DROPIN_DIR}/${DOCKER_SOCKET_DROPIN_FILE}"
+          [Socket]
+          SocketMode=0666
+          EOT
+          fi
+      - type: shell
+        destination: install_enroot_pyxis.sh
+        content: |
+          #!/bin/bash
+          set -e -o pipefail
+          ### Setting up Enroot
+          if ! dpkg -l enroot &>/dev/null; then
+              arch=\$(dpkg --print-architecture)
+              curl -fSsL -O https://github.com/NVIDIA/enroot/releases/download/v3.4.1/enroot_3.4.1-1_${arch}.deb
+              curl -fSsL -O https://github.com/NVIDIA/enroot/releases/download/v3.4.1/enroot+caps_3.4.1-1_${arch}.deb # optional
+              apt-get update
+              apt-get install --assume-yes ./*.deb
+              rm enroot*.deb
+          fi
+          # configure enroot
+          # use single quotes around EOT to avoid shell interpolation
+          cat <<'EOT' > /etc/enroot/enroot.conf
+          ENROOT_RUNTIME_PATH    /mnt/localssd/${UID}/enroot/runtime
+          ENROOT_CACHE_PATH      /mnt/localssd/${UID}/enroot/cache
+          ENROOT_DATA_PATH       /mnt/localssd/${UID}/enroot/data
+          EOT
+          ### Install Pyxis
+          if [ ! -f "/usr/local/lib/slurm/spank_pyxis.so" ]; then
+              git clone --depth 1 https://github.com/NVIDIA/pyxis.git
+              cd pyxis && make install && cd -
+              rm -rf pyxis
+              echo "required /usr/local/lib/slurm/spank_pyxis.so" > /etc/slurm/plugstack.conf
+          fi
+      - type: shell
+        destination: install_mdadm.sh
+        content: |
+          #!/bin/bash
+          apt-get update
+          apt-get install mdadm --no-install-recommends --assume-yes
+      - type: data
+        destination: /usr/local/ghpc/mount_localssd.sh
+        content: |
+          #!/bin/bash
+          set -e -o pipefail
+
+          RAID_DEVICE=/dev/md0
+          DST_MNT=/mnt/localssd
+          DISK_LABEL=LOCALSSD
+          OPTIONS=discard,defaults
+
+          # if mount is successful, do nothing
+          if mount --source LABEL="$DISK_LABEL" --target="$DST_MNT" -o "$OPTIONS"; then
+                  exit 0
+          fi
+
+          # Create new RAID, format ext4 and mount
+          # TODO: handle case of zero or 1 local SSD disk
+          # TODO: handle case when /dev/md0 exists but was not mountable for
+          # some reason
+          DEVICES=`nvme list | grep nvme_ | grep -v nvme_card-pd | awk '{print $1}' | paste -sd ' '`
+          NB_DEVICES=`nvme list | grep nvme_ | grep -v nvme_card-pd | awk '{print $1}' | wc -l`
+          mdadm --create "$RAID_DEVICE" --level=0 --raid-devices=$NB_DEVICES $DEVICES
+          mkfs.ext4 -F "$RAID_DEVICE"
+          tune2fs "$RAID_DEVICE" -r 131072
+          e2label "$RAID_DEVICE" "$DISK_LABEL"
+          mkdir -p "$DST_MNT"
+          mount --source LABEL="$DISK_LABEL" --target="$DST_MNT" -o "$OPTIONS"
+          chmod 1777 "$DST_MNT"
+      - type: data
+        destination: /etc/systemd/system/mount-local-ssd.service
+        content: |
+          [Unit]
+          Description=Assemble local SSDs as software RAID; then format and mount
+
+          [Service]
+          ExecCondition=bash -c '/usr/bin/curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/machine-type | grep -q "/a3-highgpu-8g$"'
+          ExecStart=/bin/bash /usr/local/ghpc/mount_localssd.sh
+
+          [Install]
+          WantedBy=local-fs.target
+      - type: shell
+        destination: systemctl_services.sh
+        content: |
+          #!/bin/bash
+          set -e -o pipefail
+          # workaround b/309016676 (systemd-resolved restarts 4 times causing DNS
+          # resolution failures during google-startup-scripts.service)
+          systemctl daemon-reload
+          systemctl enable delay-a3.service
+          systemctl enable mount-local-ssd.service
+      - type: shell
+        destination: remove_snap_gcloud.sh
+        content: |
+          #!/bin/bash
+          # THIS RUNNER MUST BE THE LAST RUNNER BECAUSE IT WILL BREAK GSUTIL IN
+          # PARENT SCRIPT OF STARTUP-SCRIPT MODULE
+          set -e -o pipefail
+          # Remove original DLVM gcloud, lxds install due to conflict with snapd and NFS
+          snap remove google-cloud-cli lxd
+          # Install key and google-cloud-cli from apt repo
+          GCLOUD_APT_SOURCE="/etc/apt/sources.list.d/google-cloud-sdk.list"
+          if [ ! -f "${GCLOUD_APT_SOURCE}" ]; then
+              # indentation matters in EOT below; do not blindly edit!
+              cat <<EOT > "${GCLOUD_APT_SOURCE}"
+          deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt cloud-sdk main
+          EOT
+          fi
+          curl -o /usr/share/keyrings/cloud.google.asc https://packages.cloud.google.com/apt/doc/apt-key.gpg
+          apt-get update
+          apt-get install --assume-yes google-cloud-cli
+          # Clean up the bash exceutable hash for subsequent steps using gsutil
+          hash -r
+
+- group: slurm-build
+  modules:
+  - id: slurm-image
+    source: modules/packer/custom-image
+    kind: packer
+    use:
+    - image_build_script
+    - sysnet
+    settings:
+      # building this image does not require a GPU-enabled VM but must *not* be
+      # run on a N-series VM otherwise, the "open" drivers will not install
+      machine_type: c2d-standard-32
+      source_image_project_id: [deeplearning-platform]
+      source_image: dlvm-tcpd-cu120-20231203-1800-rc0-ubuntu-2004-py310
+      image_family: $(vars.final_image_family)
+      disk_size: $(vars.disk_size_gb)
+
+- group: cluster
+  modules:
+  - id: homefs
+    source: modules/file-system/pre-existing-network-storage
+    settings:
+      server_ip: $(vars.server_ip_homefs)
+      remote_mount: $(vars.remote_mount_homefs)
+      local_mount: $(vars.local_mount_homefs)
+
+  - id: debug_node_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      node_count_static: 0
+      node_count_dynamic_max: 4
+      machine_type: n2-standard-8
+      instance_image_custom: true
+      instance_image:
+        family: $(vars.final_image_family)
+        project: $(vars.project_id)
+
+  - id: debug_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - debug_node_group
+    - sysnet
+    - homefs
+    settings:
+      partition_name: debug
+      exclusive: false
+      enable_placement: false
+
+  - id: a3_node_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      maintenance_interval: $(vars.a3_maintenance_interval)
+      node_count_static: 75
+      node_count_dynamic_max: 0
+      disk_type: pd-ssd
+      machine_type: a3-highgpu-8g
+      instance_image_custom: true
+      disable_public_ips: true
+      enable_smt: true
+      instance_image:
+        family: $(vars.final_image_family)
+        project: $(vars.project_id)
+      node_conf:
+        Sockets: 2
+        CoresPerSocket: 104
+      on_host_maintenance: TERMINATE
+      service_account:
+        email: service account principal
+        scopes:
+        - cloud-platform
+      bandwidth_tier: gvnic_enabled
+      additional_networks:
+      - network: null
+        subnetwork: $(vars.subnetwork_self_link_gpunet0)
+        subnetwork_project: $(vars.project_id)
+        network_ip: ""
+        nic_type: GVNIC
+        stack_type: IPV4_ONLY
+        queue_count: null
+        access_config: []
+        ipv6_access_config: []
+        alias_ip_range: []
+      - network: null
+        subnetwork: $(vars.subnetwork_self_link_gpunet1)
+        subnetwork_project: $(vars.project_id)
+        network_ip: ""
+        nic_type: GVNIC
+        stack_type: IPV4_ONLY
+        queue_count: null
+        access_config: []
+        ipv6_access_config: []
+        alias_ip_range: []
+      - network: null
+        subnetwork: $(vars.subnetwork_self_link_gpunet2)
+        subnetwork_project: $(vars.project_id)
+        network_ip: ""
+        nic_type: GVNIC
+        stack_type: IPV4_ONLY
+        queue_count: null
+        access_config: []
+        ipv6_access_config: []
+        alias_ip_range: []
+      - network: null
+        subnetwork: $(vars.subnetwork_self_link_gpunet3)
+        subnetwork_project: $(vars.project_id)
+        network_ip: ""
+        nic_type: GVNIC
+        stack_type: IPV4_ONLY
+        queue_count: null
+        access_config: []
+        ipv6_access_config: []
+        alias_ip_range: []
+      additional_disks:
+      - device_name: local-ssd-0
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-1
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-2
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-3
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-4
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-5
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-6
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-7
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-8
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-9
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-10
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-11
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-12
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-13
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-14
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+      - device_name: local-ssd-15
+        disk_name: null
+        disk_size_gb: 375
+        disk_type: local-ssd
+        disk_labels: {}
+        auto_delete: true
+        boot: false
+
+  - id: a3_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - a3_node_group
+    - sysnet
+    - homefs
+    settings:
+      partition_name: a3
+      enable_placement: false
+      zone: $(vars.zone)
+      exclusive: false
+      is_default: true
+      partition_conf:
+        OverSubscribe: EXCLUSIVE
+
+  - id: controller_startup
+    source: modules/scripts/startup-script
+    settings:
+      runners:
+      - type: data
+        destination: /tmp/scripts.tgz
+        source: /tmp/scripts.tgz
+      - type: shell
+        destination: stage_scripts.sh
+        content: |
+          #!/bin/bash
+          tar --no-same-owner -xvf /tmp/scripts.tgz -C /opt/apps/
+          mv /opt/apps/scripts/adm /opt/apps
+          find /opt/apps/adm/ -type d -exec chmod 0755 {} +
+          find /opt/apps/scripts/ -type d -exec chmod 0755 {} +
+          find /opt/apps/scripts/ -type f -exec chmod 0755 {} +
+          find /opt/apps/adm/slurm -type f -exec chmod 0755 {} +
+      - type: shell
+        destination: reset_enroot.sh
+        content: |
+          #!/bin/bash
+          # reset enroot to defaults of files under /home and running under /run
+          # allows basic enroot testing on login/controller nodes (reduced I/O)
+          rm -f /etc/enroot/enroot.conf
+
+  - id: slurm_controller
+    source: community/modules/scheduler/schedmd-slurm-gcp-v5-controller
+    use:
+    - sysnet
+    - a3_partition
+    - debug_partition
+    - homefs
+    settings:
+      machine_type: c2-standard-8
+      cloud_parameters:
+        resume_rate: 0
+        resume_timeout: 900
+        suspend_rate: 0
+        suspend_timeout: 600
+        no_comma_params: false
+      instance_image_custom: true
+      instance_image:
+        family: $(vars.final_image_family)
+        project: $(vars.project_id)
+      slurm_conf_tpl: modules/embedded/community/modules/scheduler/schedmd-slurm-gcp-v5-controller/etc/long-prolog-slurm.conf.tpl
+      controller_startup_script: $(controller_startup.startup_script)
+      compute_startup_script: |
+        #!/bin/bash
+        # Setup sudo for slurm job users
+        mkdir -m 750 /var/slurm-sudoers.d
+        (umask 117; echo '#includedir /var/slurm-sudoers.d' > /etc/sudoers.d/slurm-job-user)
+        # Apply fix to common_account PAM config if not already applied.
+        if ! grep -q '^account[[:blank:]].*[[:blank:]]pam_unix.so.*broken_shadow' /etc/pam.d/common-account; then
+          sed -i '/^account[[:blank:]].*[[:blank:]]pam_unix.so[[:blank:]]*/ s/$/ broken_shadow/' /etc/pam.d/common-account
+        fi
+      prolog_scripts:
+      - filename: external-prolog.sh
+        content: |
+          #!/bin/bash
+          if [[ -x /opt/apps/adm/slurm/slurm_prolog ]]; then
+            exec /opt/apps/adm/slurm/slurm_prolog
+          fi
+      epilog_scripts:
+      - filename: external-epilog.sh
+        content: |
+          #!/bin/bash
+          if [[ -x /opt/apps/adm/slurm/slurm_epilog ]]; then
+            exec /opt/apps/adm/slurm/slurm_epilog
+          fi
+
+  - id: slurm_login
+    source: community/modules/scheduler/schedmd-slurm-gcp-v5-login
+    use:
+    - sysnet
+    - slurm_controller
+    settings:
+      disk_type: pd-balanced
+      instance_image_custom: true
+      instance_image:
+        family: $(vars.final_image_family)
+        project: $(vars.project_id)
+      machine_type: c2-standard-16
+      startup_script: |
+        #!/bin/bash
+        # reset enroot to defaults of files under /home and running under /run
+        # allows basic enroot testing on login node (reduced I/O)
+        rm -f /etc/enroot/enroot.conf

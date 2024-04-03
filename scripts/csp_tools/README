@@ -1,0 +1,32 @@
+# CSP Tools for H100 Cluster validation using NCCL/DCGM.
+
+This assumes that you are running on a Slurm login node that shares a filesystem
+with the worker nodes, and that you have enroot/pyxis properly installed.
+
+This is meant to mimic what is done
+[here](https://github.com/NVIDIA/NeMo-Megatron-Launcher/tree/master/csp_tools)
+by other CSPs.
+
+To run the cluster validation, first import the container images for enroot to
+use:
+
+	./import_containers.sh
+
+Then determine the nodes you want to validate (must be divisible by 2). Use
+Slurm  to get the node lists:
+
+	sinfo
+
+This should return several lines, one of which might look something like
+
+	a3*          up   infinite     40   idle dlvm-a3-ghpc-[0-39]
+
+The `dlvm-a3-ghpc-[0-39]` string is what you care about, and it might be more
+complicated like `dlvm-a3-ghpc-[0-9,11,23-39]`.
+
+You'd then run:
+
+	./cluster_validation.sh --nodelist "dlvm-a3-ghpc-[0-39]" --nodes 40 --partition a3
+
+This will run both dcgm and nccl tests. To only run one or the other, supply
+"--dcgm" or "--nccl", respectively.
