@@ -1,0 +1,129 @@
+# Copyright 2023 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+blueprint_name: slurm-a3-base
+ghpc_version: v1.31.1-0-gb830db48
+vars:
+  deployment_name: slurm-a3-base
+  gpu_net0_range: 10.0.0.0/16
+  gpu_net1_range: 10.1.0.0/16
+  gpu_net2_range: 10.2.0.0/16
+  gpu_net3_range: 10.3.0.0/16
+  labels:
+    ghpc_blueprint: slurm-a3-base
+    ghpc_deployment: ((var.deployment_name))
+  project_id: nii-geniac
+  region: asia-southeast1
+  sys_net_range: 172.16.0.0/16
+  zone: asia-southeast1-c
+deployment_groups:
+  - group: primary
+    terraform_backend:
+      type: gcs
+      configuration:
+        bucket: geniac-tf-state-bucket
+        prefix: (("slurm-a3-base/${var.deployment_name}/primary"))
+    modules:
+      - source: modules/network/vpc
+        kind: terraform
+        id: sysnet
+        outputs:
+          - name: network_name
+          - name: subnetwork_name
+        settings:
+          default_primary_subnetwork_size: 4
+          deployment_name: ((var.deployment_name))
+          mtu: 8244
+          network_address_range: ((var.sys_net_range))
+          network_name: slurm-sys-net
+          project_id: ((var.project_id))
+          region: ((var.region))
+          subnetwork_name: slurm-sys-subnet
+      - source: modules/network/vpc
+        kind: terraform
+        id: gpunet0
+        outputs:
+          - name: subnetwork_self_link
+        settings:
+          default_primary_subnetwork_size: 4
+          deployment_name: ((var.deployment_name))
+          mtu: 8244
+          network_address_range: ((var.gpu_net0_range))
+          network_name: slurm-gpu-net0
+          project_id: ((var.project_id))
+          region: ((var.region))
+          subnetwork_name: slurm-gpu-subnet0
+      - source: modules/network/vpc
+        kind: terraform
+        id: gpunet1
+        outputs:
+          - name: subnetwork_self_link
+        settings:
+          default_primary_subnetwork_size: 4
+          deployment_name: ((var.deployment_name))
+          mtu: 8244
+          network_address_range: ((var.gpu_net1_range))
+          network_name: slurm-gpu-net1
+          project_id: ((var.project_id))
+          region: ((var.region))
+          subnetwork_name: slurm-gpu-subnet1
+      - source: modules/network/vpc
+        kind: terraform
+        id: gpunet2
+        outputs:
+          - name: subnetwork_self_link
+        settings:
+          default_primary_subnetwork_size: 4
+          deployment_name: ((var.deployment_name))
+          mtu: 8244
+          network_address_range: ((var.gpu_net2_range))
+          network_name: slurm-gpu-net2
+          project_id: ((var.project_id))
+          region: ((var.region))
+          subnetwork_name: slurm-gpu-subnet2
+      - source: modules/network/vpc
+        kind: terraform
+        id: gpunet3
+        outputs:
+          - name: subnetwork_self_link
+        settings:
+          default_primary_subnetwork_size: 4
+          deployment_name: ((var.deployment_name))
+          mtu: 8244
+          network_address_range: ((var.gpu_net3_range))
+          network_name: slurm-gpu-net3
+          project_id: ((var.project_id))
+          region: ((var.region))
+          subnetwork_name: slurm-gpu-subnet3
+      - source: modules/file-system/filestore
+        kind: terraform
+        id: homefs
+        use:
+          - sysnet
+        outputs:
+          - name: network_storage
+        settings:
+          deployment_name: ((var.deployment_name))
+          filestore_tier: HIGH_SCALE_SSD
+          labels: ((var.labels))
+          local_mount: /home
+          network_id: ((module.sysnet.network_id))
+          project_id: ((var.project_id))
+          region: ((var.region))
+          size_gb: 102400
+          zone: ((var.zone))
+terraform_backend_defaults:
+  type: gcs
+  configuration:
+    bucket: geniac-tf-state-bucket
