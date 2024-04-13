@@ -31,8 +31,8 @@ terraform_backend_defaults:
 vars:
   project_id: nii-geniac  # GCP で要チェック
   deployment_name: slurm-a3-base
-  region: customer-region
-  zone: customer-zone
+  region: asia-southeast1
+  zone: asia-southeast1-c
   sys_net_range: 172.16.0.0/16
   gpu_net0_range: 10.0.0.0/16
   gpu_net1_range: 10.1.0.0/16
