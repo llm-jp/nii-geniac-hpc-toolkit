@@ -1,0 +1,16 @@
+{
+  "builds": [
+    {
+      "name": "toolkit_image",
+      "builder_type": "googlecompute",
+      "build_time": 1713114664,
+      "files": null,
+      "artifact_id": "slurm-dlvm-20240414t164308z",
+      "packer_run_uuid": "0c859106-f9fb-2852-4000-770d6cb02852",
+      "custom_data": {
+        "built-by": "cloud-hpc-toolkit"
+      }
+    }
+  ],
+  "last_run_uuid": "0c859106-f9fb-2852-4000-770d6cb02852"
+}
