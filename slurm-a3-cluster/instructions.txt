@@ -1,0 +1,50 @@
+Advanced Deployment Instructions
+================================
+
+Terraform group 'build_script' was successfully created in directory slurm-a3-cluster/build_script
+To deploy, run the following commands:
+
+terraform -chdir=slurm-a3-cluster/build_script init
+terraform -chdir=slurm-a3-cluster/build_script validate
+terraform -chdir=slurm-a3-cluster/build_script apply
+ghpc export-outputs slurm-a3-cluster/build_script
+
+Packer group was successfully created in directory slurm-a3-cluster/slurm-build
+To deploy, run the following commands:
+
+ghpc import-inputs slurm-a3-cluster/slurm-build
+cd slurm-a3-cluster/slurm-build/slurm-image
+packer init .
+packer validate .
+packer build .
+cd -
+
+Terraform group 'cluster' was successfully created in directory slurm-a3-cluster/cluster
+To deploy, run the following commands:
+
+ghpc import-inputs slurm-a3-cluster/cluster
+terraform -chdir=slurm-a3-cluster/cluster init
+terraform -chdir=slurm-a3-cluster/cluster validate
+terraform -chdir=slurm-a3-cluster/cluster apply
+
+Destroying infrastructure when no longer needed
+===============================================
+
+Automated
+---------
+
+ghpc destroy slurm-a3-cluster
+
+Advanced / Manual
+-----------------
+Infrastructure should be destroyed in reverse order of creation:
+
+terraform -chdir=slurm-a3-cluster/cluster destroy
+terraform -chdir=slurm-a3-cluster/build_script destroy
+
+Please browse to the Cloud Console to remove VM images produced by Packer.
+If this file is present, the names of images can be read from it:
+
+slurm-a3-cluster/slurm-build/slurm-image/packer-manifest.json
+
+https://console.cloud.google.com/compute/images
