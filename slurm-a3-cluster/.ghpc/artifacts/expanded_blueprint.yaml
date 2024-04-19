@@ -17,6 +17,7 @@ ghpc_version: v1.31.1-0-gb830db48
 validation_level: 1
 vars:
   a3_maintenance_interval: ""
+  a3_reservation_name: nii01-a3-highgpu-8g-reservation-0415-0815
   deployment_name: slurm-a3-cluster
   disk_size_gb: 200
   enable_cleanup_compute: true
@@ -538,7 +539,7 @@ deployment_groups:
             CoresPerSocket: 104
             Sockets: 2
           node_count_dynamic_max: 0
-          node_count_static: 74
+          node_count_static: 75
           on_host_maintenance: TERMINATE
           project_id: ((var.project_id))
           service_account:

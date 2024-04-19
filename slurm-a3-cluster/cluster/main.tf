@@ -254,7 +254,7 @@ module "a3_node_group" {
     Sockets        = 2
   }
   node_count_dynamic_max = 0
-  node_count_static      = 74
+  node_count_static      = 75
   on_host_maintenance    = "TERMINATE"
   project_id             = var.project_id
   service_account = {
