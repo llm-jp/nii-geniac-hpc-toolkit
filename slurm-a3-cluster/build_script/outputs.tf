@@ -14,6 +14,12 @@
   * limitations under the License.
   */
 
+output "subnetwork_name_sysnet" {
+  description = "Automatically-generated output exported for use by later deployment groups"
+  value       = module.sysnet.subnetwork_name
+  sensitive   = true
+}
+
 output "subnetwork_self_link_sysnet" {
   description = "Automatically-generated output exported for use by later deployment groups"
   value       = module.sysnet.subnetwork_self_link
@@ -23,12 +29,6 @@ output "subnetwork_self_link_sysnet" {
 output "network_self_link_sysnet" {
   description = "Automatically-generated output exported for use by later deployment groups"
   value       = module.sysnet.network_self_link
-  sensitive   = true
-}
-
-output "subnetwork_name_sysnet" {
-  description = "Automatically-generated output exported for use by later deployment groups"
-  value       = module.sysnet.subnetwork_name
   sensitive   = true
 }
 

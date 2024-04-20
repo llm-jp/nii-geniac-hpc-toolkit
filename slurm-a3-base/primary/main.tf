@@ -93,3 +93,11 @@ module "homefs" {
   size_gb         = 102400
   zone            = var.zone
 }
+
+module "lustrefs" {
+  source       = "./modules/embedded/modules/file-system/pre-existing-network-storage"
+  fs_type      = "lustre"
+  local_mount  = "/lustre"
+  remote_mount = "/lustre"
+  server_ip    = "172.16.0.29@tcp"
+}

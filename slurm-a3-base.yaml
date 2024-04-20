@@ -108,3 +108,11 @@ deployment_groups:
       local_mount: /home
     outputs:
     - network_storage
+
+  - id: lustrefs
+    source: modules/file-system/pre-existing-network-storage
+    settings:
+      fs_type: lustre
+      server_ip: 172.16.0.29@tcp
+      local_mount: /lustre
+      remote_mount: /lustre

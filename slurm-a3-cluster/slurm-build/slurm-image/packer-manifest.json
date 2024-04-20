@@ -3,14 +3,14 @@
     {
       "name": "toolkit_image",
       "builder_type": "googlecompute",
-      "build_time": 1713252903,
+      "build_time": 1713621221,
       "files": null,
-      "artifact_id": "slurm-dlvm-20240416t070832z",
-      "packer_run_uuid": "442c49d2-f8b5-20dd-8207-1a56923e0368",
+      "artifact_id": "slurm-dlvm-20240420t132506z",
+      "packer_run_uuid": "aa4ee7f2-69df-0cdc-bc20-78ecf3a06265",
       "custom_data": {
         "built-by": "cloud-hpc-toolkit"
       }
     }
   ],
-  "last_run_uuid": "442c49d2-f8b5-20dd-8207-1a56923e0368"
+  "last_run_uuid": "aa4ee7f2-69df-0cdc-bc20-78ecf3a06265"
 }

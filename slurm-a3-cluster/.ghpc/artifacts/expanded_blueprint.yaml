@@ -54,13 +54,13 @@ deployment_groups:
         kind: terraform
         id: sysnet
         outputs:
+          - name: subnetwork_name
+            description: Automatically-generated output exported for use by later deployment groups
+            sensitive: true
           - name: subnetwork_self_link
             description: Automatically-generated output exported for use by later deployment groups
             sensitive: true
           - name: network_self_link
-            description: Automatically-generated output exported for use by later deployment groups
-            sensitive: true
-          - name: subnetwork_name
             description: Automatically-generated output exported for use by later deployment groups
             sensitive: true
         settings:

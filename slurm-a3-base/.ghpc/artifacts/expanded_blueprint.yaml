@@ -123,6 +123,14 @@ deployment_groups:
           region: ((var.region))
           size_gb: 102400
           zone: ((var.zone))
+      - source: modules/file-system/pre-existing-network-storage
+        kind: terraform
+        id: lustrefs
+        settings:
+          fs_type: lustre
+          local_mount: /lustre
+          remote_mount: /lustre
+          server_ip: 172.16.0.29@tcp
 terraform_backend_defaults:
   type: gcs
   configuration:
