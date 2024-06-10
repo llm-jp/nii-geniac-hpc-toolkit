@@ -27,7 +27,7 @@
 
 ### TODO ###
 
-blueprint_name: slurm-a3-cluster
+blueprint_name: slurm-a3-cluster-tokyo
 
 terraform_backend_defaults:
   type: gcs
@@ -36,28 +36,28 @@ terraform_backend_defaults:
 
 vars:
   project_id: nii-geniac  # GCPで要チェック
-  deployment_name: slurm-a3-cluster
-  a3_reservation_name: nii01-a3-highgpu-8g-reservation-0415-0815
-  region: asia-southeast1
-  zone: asia-southeast1-c
+  deployment_name: slurm-a3-cluster-tokyo
+#  a3_reservation_name: nii-a3-highgpu-8g-reservation-0610-0722
+  region: asia-northeast1
+  zone: asia-northeast1-b
   zones:
   - $(vars.zone)
   disk_size_gb: 200
   final_image_family: slurm-dlvm
-  slurm_cluster_name: slurm0
+  slurm_cluster_name: slurm0tk
   enable_reconfigure: true
   enable_cleanup_compute: true
   enable_cleanup_subscriptions: true
   a3_maintenance_interval: ""
   # network parameters should match base blueprint unless network names were modified
-  network_name_system: slurm-sys-net
-  subnetwork_name_system: slurm-sys-subnet
-  subnetwork_self_link_gpunet0: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet0
-  subnetwork_self_link_gpunet1: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet1
-  subnetwork_self_link_gpunet2: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet2
-  subnetwork_self_link_gpunet3: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet3
+  network_name_system: slurm-sys-net-tokyo
+  subnetwork_name_system: slurm-sys-subnet-tokyo
+  subnetwork_self_link_gpunet0: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet0-tokyo
+  subnetwork_self_link_gpunet1: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet1-tokyo
+  subnetwork_self_link_gpunet2: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet2-tokyo
+  subnetwork_self_link_gpunet3: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet3-tokyo
   # MUST set to IP address of Filestore instance from base deployment!
-  server_ip_homefs: 10.167.145.130
+  server_ip_homefs: 10.50.157.194
   remote_mount_homefs: /nfsshare
   local_mount_homefs: /home
 
@@ -75,10 +75,10 @@ deployment_groups:
     settings:
       install_ansible: true
       configure_ssh_host_patterns:
-      - 10.0.0.*
-      - 10.1.0.*
-      - 10.2.0.*
-      - 10.3.0.*
+      - 10.4.0.*
+      - 10.5.0.*
+      - 10.6.0.*
+      - 10.7.0.*
       - $(vars.slurm_cluster_name)*
       runners:
       - type: shell
@@ -296,7 +296,7 @@ deployment_groups:
     settings:
       # building this image does not require a GPU-enabled VM but must *not* be
       # run on a N-series VM otherwise, the "open" drivers will not install
-      machine_type: c2d-standard-32
+      machine_type: c2-standard-30
       source_image_project_id: [deeplearning-platform]
       source_image: dlvm-tcpd-cu120-20231203-1800-rc0-ubuntu-2004-py310
       image_family: $(vars.final_image_family)
@@ -337,7 +337,7 @@ deployment_groups:
     source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
     settings:
       maintenance_interval: $(vars.a3_maintenance_interval)
-      node_count_static: 75
+      node_count_static: 12
       node_count_dynamic_max: 0
       disk_type: pd-ssd
       machine_type: a3-highgpu-8g

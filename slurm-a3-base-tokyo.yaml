@@ -21,7 +21,7 @@
 # 35 行目: customer-zone を今回割り当てられたゾーンへご変更ください
 # 106 行目: filestore-tier を利用する Filestore の Tier へご変更ください (ご参考：https://cloud.google.com/filestore/docs/service-tiers?hl=ja, https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/filestore_instance#argument-reference)
 
-blueprint_name: slurm-a3-base
+blueprint_name: slurm-a3-base-tokyo
 
 terraform_backend_defaults:
   type: gcs
@@ -30,14 +30,14 @@ terraform_backend_defaults:
 
 vars:
   project_id: nii-geniac  # GCP で要チェック
-  deployment_name: slurm-a3-base
-  region: asia-southeast1
-  zone: asia-southeast1-c
-  sys_net_range: 172.16.0.0/16
-  gpu_net0_range: 10.0.0.0/16
-  gpu_net1_range: 10.1.0.0/16
-  gpu_net2_range: 10.2.0.0/16
-  gpu_net3_range: 10.3.0.0/16
+  deployment_name: slurm-a3-base-tokyo
+  region: asia-northeast1
+  zone: asia-northeast1-b
+  sys_net_range_tokyo: 172.17.0.0/16
+  gpu_net0_range_tokyo: 10.4.0.0/16
+  gpu_net1_range_tokyo: 10.5.0.0/16
+  gpu_net2_range_tokyo: 10.6.0.0/16
+  gpu_net3_range_tokyo: 10.7.0.0/16
 
 deployment_groups:
 - group: primary
@@ -45,9 +45,9 @@ deployment_groups:
   - id: sysnet
     source: modules/network/vpc
     settings:
-      network_name: slurm-sys-net
-      subnetwork_name: slurm-sys-subnet
-      network_address_range: $(vars.sys_net_range)
+      network_name: slurm-sys-net-tokyo
+      subnetwork_name: slurm-sys-subnet-tokyo
+      network_address_range: $(vars.sys_net_range_tokyo)
       default_primary_subnetwork_size: 4
       mtu: 8244
     outputs:
@@ -57,9 +57,9 @@ deployment_groups:
   - id: gpunet0
     source: modules/network/vpc
     settings:
-      network_name: slurm-gpu-net0
-      subnetwork_name: slurm-gpu-subnet0
-      network_address_range: $(vars.gpu_net0_range)
+      network_name: slurm-gpu-net0-tokyo
+      subnetwork_name: slurm-gpu-subnet0-tokyo
+      network_address_range: $(vars.gpu_net0_range_tokyo)
       default_primary_subnetwork_size: 4
       mtu: 8244
     outputs:
@@ -68,9 +68,9 @@ deployment_groups:
   - id: gpunet1
     source: modules/network/vpc
     settings:
-      network_name: slurm-gpu-net1
-      subnetwork_name: slurm-gpu-subnet1
-      network_address_range: $(vars.gpu_net1_range)
+      network_name: slurm-gpu-net1-tokyo
+      subnetwork_name: slurm-gpu-subnet1-tokyo
+      network_address_range: $(vars.gpu_net1_range_tokyo)
       default_primary_subnetwork_size: 4
       mtu: 8244
     outputs:
@@ -79,9 +79,9 @@ deployment_groups:
   - id: gpunet2
     source: modules/network/vpc
     settings:
-      network_name: slurm-gpu-net2
-      subnetwork_name: slurm-gpu-subnet2
-      network_address_range: $(vars.gpu_net2_range)
+      network_name: slurm-gpu-net2-tokyo
+      subnetwork_name: slurm-gpu-subnet2-tokyo
+      network_address_range: $(vars.gpu_net2_range_tokyo)
       default_primary_subnetwork_size: 4
       mtu: 8244
     outputs:
@@ -90,9 +90,9 @@ deployment_groups:
   - id: gpunet3
     source: modules/network/vpc
     settings:
-      network_name: slurm-gpu-net3
-      subnetwork_name: slurm-gpu-subnet3
-      network_address_range: $(vars.gpu_net3_range)
+      network_name: slurm-gpu-net3-tokyo
+      subnetwork_name: slurm-gpu-subnet3-tokyo
+      network_address_range: $(vars.gpu_net3_range_tokyo)
       default_primary_subnetwork_size: 4
       mtu: 8244
     outputs:
@@ -104,15 +104,15 @@ deployment_groups:
     - sysnet
     settings:
       filestore_tier: HIGH_SCALE_SSD
-      size_gb: 102400
+      size_gb: 10240
       local_mount: /home
     outputs:
     - network_storage
 
-  - id: lustrefs
-    source: modules/file-system/pre-existing-network-storage
-    settings:
-      fs_type: lustre
-      server_ip: 172.16.0.29@tcp
-      local_mount: /lustre
-      remote_mount: /lustre
+#  - id: lustrefs
+#    source: modules/file-system/pre-existing-network-storage
+#    settings:
+#      fs_type: lustre
+#      server_ip: 172.16.0.29@tcp
+#      local_mount: /lustre
+#      remote_mount: /lustre
