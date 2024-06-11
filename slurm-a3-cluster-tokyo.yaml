@@ -22,7 +22,7 @@
 # 40 行目: customer-region を今回割り当てられたリージョンへご変更ください
 # 41 行目: customer-zone を今回割り当てられたゾーンへご変更ください
 # 59 行目: filestore-ip を前の手順で作成された Filestore の IP アドレスへご変更ください (Output として出力されます)
-# 339 行目: static-node-count を今回割り当てられたノード数にご変更ください
+# 339 行目: node_count_static を今回割り当てられたノード数にご変更ください
 # 354 行目: service account principal を利用する <Project Number>-compute@developer.gserviceaccount.com へご変更ください
 
 ### TODO ###
