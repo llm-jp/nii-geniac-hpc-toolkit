@@ -57,7 +57,7 @@ vars:
   subnetwork_self_link_gpunet2: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet2-tokyo
   subnetwork_self_link_gpunet3: https://www.googleapis.com/compute/v1/projects/$(vars.project_id)/regions/$(vars.region)/subnetworks/slurm-gpu-subnet3-tokyo
   # MUST set to IP address of Filestore instance from base deployment!
-  server_ip_homefs: 10.50.157.194
+  server_ip_homefs: 10.60.161.194
   remote_mount_homefs: /nfsshare
   local_mount_homefs: /home
 
