@@ -1,0 +1,73 @@
+# Copyright 2023 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+blueprint_name: slurm-a3-base-tky
+ghpc_version: v1.34.3-0-g627b43aa
+vars:
+  deployment_name: slurm-a3-base-tky
+  labels:
+    ghpc_blueprint: slurm-a3-base-tky
+    ghpc_deployment: ((var.deployment_name))
+  project_id: nii-geniac
+  region: asia-northeast1
+  sys_net_range: 172.17.0.0/16
+  zone: asia-northeast1-b
+deployment_groups:
+  - group: primary
+    terraform_backend:
+      type: gcs
+      configuration:
+        bucket: geniac-tf-state-bucket
+        prefix: (("slurm-a3-base-tky/${var.deployment_name}/primary"))
+    modules:
+      - source: modules/network/vpc
+        kind: terraform
+        id: sysnet
+        outputs:
+          - name: network_name
+          - name: subnetwork_name
+        settings:
+          deployment_name: ((var.deployment_name))
+          mtu: 8244
+          network_address_range: ((var.sys_net_range))
+          network_name: (("${var.deployment_name}-sysnet"))
+          project_id: ((var.project_id))
+          region: ((var.region))
+          subnetworks:
+            - description: (("primary subnetwork in ${var.deployment_name}-sysnet"))
+              new_bits: 4
+              subnet_name: (("${var.deployment_name}-sysnet-subnet"))
+              subnet_private_access: true
+              subnet_region: ((var.region))
+      - source: modules/file-system/filestore
+        kind: terraform
+        id: homefs
+        use:
+          - sysnet
+        outputs:
+          - name: network_storage
+        settings:
+          deployment_name: ((var.deployment_name))
+          filestore_tier: HIGH_SCALE_SSD
+          labels: ((var.labels))
+          local_mount: /home
+          network_id: ((module.sysnet.network_id))
+          project_id: ((var.project_id))
+          region: ((var.region))
+          size_gb: 10240
+          zone: ((var.zone))
+terraform_backend_defaults:
+  type: gcs
+  configuration:
+    bucket: geniac-tf-state-bucket

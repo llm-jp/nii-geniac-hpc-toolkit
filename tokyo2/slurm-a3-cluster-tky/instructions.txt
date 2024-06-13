@@ -1,0 +1,23 @@
+Advanced Deployment Instructions
+================================
+
+Terraform group 'cluster' was successfully created in directory slurm-a3-cluster-tky/cluster
+To deploy, run the following commands:
+
+terraform -chdir=slurm-a3-cluster-tky/cluster init
+terraform -chdir=slurm-a3-cluster-tky/cluster validate
+terraform -chdir=slurm-a3-cluster-tky/cluster apply
+
+Destroying infrastructure when no longer needed
+===============================================
+
+Automated
+---------
+
+ghpc destroy slurm-a3-cluster-tky
+
+Advanced / Manual
+-----------------
+Infrastructure should be destroyed in reverse order of creation:
+
+terraform -chdir=slurm-a3-cluster-tky/cluster destroy

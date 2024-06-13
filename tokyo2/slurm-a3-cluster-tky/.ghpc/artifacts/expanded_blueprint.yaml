@@ -1,0 +1,255 @@
+# Copyright 2023 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+blueprint_name: slurm-a3-cluster-tky
+ghpc_version: v1.34.3-0-g627b43aa
+validation_level: 1
+vars:
+  a3_maintenance_interval: ""
+  a3_partition_name: a3
+  a3_static_cluster_size: 12
+  base_deployment_name: slurm-a3-base-tky
+  deployment_name: slurm-a3-cluster-tky
+  disk_size_gb: 200
+  enable_cleanup_compute: true
+  enable_cleanup_subscriptions: true
+  enable_reconfigure: true
+  final_image_family: slurm-dlvm
+  labels:
+    ghpc_blueprint: slurm-a3-cluster-tky
+    ghpc_deployment: ((var.deployment_name))
+  local_mount_homefs: /home
+  network_name_system: (("${var.base_deployment_name}-sysnet"))
+  project_id: nii-geniac
+  region: asia-northeast1
+  remote_mount_homefs: /nfsshare
+  server_ip_homefs: 10.98.94.2
+  slurm_cluster_name: slurm0tky
+  subnetwork_name_system: (("${var.base_deployment_name}-sysnet-subnet"))
+  zone: asia-northeast1-b
+  zones:
+    - ((var.zone))
+deployment_groups:
+  - group: cluster
+    terraform_backend:
+      type: gcs
+      configuration:
+        bucket: geniac-tf-state-bucket
+        prefix: (("slurm-a3-cluster-tky/${var.deployment_name}/cluster"))
+    modules:
+      - source: modules/network/pre-existing-vpc
+        kind: terraform
+        id: sysnet
+        settings:
+          network_name: ((var.network_name_system))
+          project_id: ((var.project_id))
+          region: ((var.region))
+          subnetwork_name: ((var.subnetwork_name_system))
+      - source: modules/network/multivpc
+        kind: terraform
+        id: gpunets
+        settings:
+          deployment_name: ((var.deployment_name))
+          global_ip_address_range: 10.4.0.0/14
+          network_count: 4
+          network_name_prefix: (("${var.deployment_name}-gpunet"))
+          project_id: ((var.project_id))
+          region: ((var.region))
+          subnetwork_cidr_suffix: 16
+      - source: modules/file-system/pre-existing-network-storage
+        kind: terraform
+        id: homefs
+        settings:
+          local_mount: ((var.local_mount_homefs))
+          remote_mount: ((var.remote_mount_homefs))
+          server_ip: ((var.server_ip_homefs))
+      - source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+        kind: terraform
+        id: debug_node_group
+        settings:
+          disk_size_gb: ((var.disk_size_gb))
+          instance_image:
+            family: ((var.final_image_family))
+            project: ((var.project_id))
+          instance_image_custom: true
+          labels: ((var.labels))
+          machine_type: n2-standard-2
+          node_count_dynamic_max: 4
+          node_count_static: 0
+          project_id: ((var.project_id))
+      - source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+        kind: terraform
+        id: debug_partition
+        use:
+          - debug_node_group
+          - sysnet
+          - homefs
+        settings:
+          deployment_name: ((var.deployment_name))
+          enable_placement: false
+          enable_reconfigure: ((var.enable_reconfigure))
+          exclusive: false
+          network_storage: ((flatten([module.homefs.network_storage])))
+          node_groups: ((flatten([module.debug_node_group.node_groups])))
+          partition_name: debug
+          project_id: ((var.project_id))
+          region: ((var.region))
+          slurm_cluster_name: ((var.slurm_cluster_name))
+          subnetwork_self_link: ((module.sysnet.subnetwork_self_link))
+          zone: ((var.zone))
+          zones: ((var.zones))
+      - source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+        kind: terraform
+        id: a3_node_group
+        use:
+          - gpunets
+        settings:
+          additional_networks: ((flatten([module.gpunets.additional_networks])))
+          bandwidth_tier: gvnic_enabled
+          disable_public_ips: true
+          disk_size_gb: ((var.disk_size_gb))
+          disk_type: pd-ssd
+          enable_smt: true
+          instance_image:
+            family: ((var.final_image_family))
+            project: ((var.project_id))
+          instance_image_custom: true
+          labels: ((var.labels))
+          machine_type: a3-highgpu-8g
+          maintenance_interval: ((var.a3_maintenance_interval))
+          node_conf:
+            CoresPerSocket: 52
+            ThreadsPerCore: 2
+          node_count_dynamic_max: 0
+          node_count_static: ((var.a3_static_cluster_size))
+          on_host_maintenance: TERMINATE
+          project_id: ((var.project_id))
+          service_account:
+            email: 874088236606-compute@developer.gserviceaccount.com
+            scopes:
+              - cloud-platform
+      - source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+        kind: terraform
+        id: a3_partition
+        use:
+          - a3_node_group
+          - sysnet
+          - homefs
+        settings:
+          deployment_name: ((var.deployment_name))
+          enable_placement: false
+          enable_reconfigure: ((var.enable_reconfigure))
+          exclusive: false
+          is_default: true
+          network_storage: ((flatten([module.homefs.network_storage])))
+          node_groups: ((flatten([module.a3_node_group.node_groups])))
+          partition_conf:
+            OverSubscribe: EXCLUSIVE
+          partition_name: ((var.a3_partition_name))
+          project_id: ((var.project_id))
+          region: ((var.region))
+          slurm_cluster_name: ((var.slurm_cluster_name))
+          subnetwork_self_link: ((module.sysnet.subnetwork_self_link))
+          zone: ((var.zone))
+          zones: ((var.zones))
+      - source: modules/scripts/startup-script
+        kind: terraform
+        id: controller_startup
+        settings:
+          deployment_name: ((var.deployment_name))
+          labels: ((var.labels))
+          project_id: ((var.project_id))
+          region: ((var.region))
+          runners:
+            - content: (("#!/bin/bash\ncurl -s --create-dirs -o /opt/apps/adm/slurm/scripts/receive-data-path-manager \\\n    https://raw.githubusercontent.com/GoogleCloudPlatform/slurm-gcp/v5/tools/prologs-epilogs/receive-data-path-manager\nchmod 0755 /opt/apps/adm/slurm/scripts/receive-data-path-manager\nmkdir -p /opt/apps/adm/slurm/partition-${var.a3_partition_name}-prolog_slurmd.d\nmkdir -p /opt/apps/adm/slurm/partition-${var.a3_partition_name}-epilog_slurmd.d\nln -s /opt/apps/adm/slurm/scripts/receive-data-path-manager /opt/apps/adm/slurm/partition-${var.a3_partition_name}-prolog_slurmd.d/start-rxdm.prolog_slurmd\nln -s /opt/apps/adm/slurm/scripts/receive-data-path-manager /opt/apps/adm/slurm/partition-${var.a3_partition_name}-epilog_slurmd.d/stop-rxdm.epilog_slurmd\n"))
+              destination: stage_scripts.sh
+              type: shell
+            - content: |
+                #!/bin/bash
+                # reset enroot to defaults of files under /home and running under /run
+                # allows basic enroot testing on login/controller nodes (reduced I/O)
+                rm -f /etc/enroot/enroot.conf
+              destination: reset_enroot.sh
+              type: shell
+      - source: community/modules/scheduler/schedmd-slurm-gcp-v5-controller
+        kind: terraform
+        id: slurm_controller
+        use:
+          - sysnet
+          - a3_partition
+          - debug_partition
+          - homefs
+        settings:
+          cloud_parameters:
+            no_comma_params: false
+            resume_rate: 0
+            resume_timeout: 900
+            suspend_rate: 0
+            suspend_timeout: 600
+          controller_startup_script: ((module.controller_startup.startup_script))
+          deployment_name: ((var.deployment_name))
+          disk_size_gb: ((var.disk_size_gb))
+          enable_cleanup_compute: ((var.enable_cleanup_compute))
+          enable_cleanup_subscriptions: ((var.enable_cleanup_subscriptions))
+          enable_external_prolog_epilog: true
+          enable_reconfigure: ((var.enable_reconfigure))
+          instance_image:
+            family: ((var.final_image_family))
+            project: ((var.project_id))
+          instance_image_custom: true
+          labels: ((var.labels))
+          machine_type: c2-standard-8
+          network_self_link: ((module.sysnet.network_self_link))
+          network_storage: ((flatten([module.homefs.network_storage])))
+          partition: ((flatten([module.debug_partition.partition, flatten([module.a3_partition.partition])])))
+          project_id: ((var.project_id))
+          region: ((var.region))
+          slurm_cluster_name: ((var.slurm_cluster_name))
+          slurm_conf_tpl: modules/embedded/community/modules/scheduler/schedmd-slurm-gcp-v5-controller/etc/long-prolog-slurm.conf.tpl
+          subnetwork_self_link: ((module.sysnet.subnetwork_self_link))
+          zone: ((var.zone))
+      - source: community/modules/scheduler/schedmd-slurm-gcp-v5-login
+        kind: terraform
+        id: slurm_login
+        use:
+          - sysnet
+          - slurm_controller
+        settings:
+          controller_instance_id: ((module.slurm_controller.controller_instance_id))
+          deployment_name: ((var.deployment_name))
+          disk_size_gb: ((var.disk_size_gb))
+          disk_type: pd-balanced
+          enable_reconfigure: ((var.enable_reconfigure))
+          instance_image:
+            family: ((var.final_image_family))
+            project: ((var.project_id))
+          instance_image_custom: true
+          labels: ((var.labels))
+          machine_type: c2-standard-16
+          network_self_link: ((module.sysnet.network_self_link))
+          project_id: ((var.project_id))
+          pubsub_topic: ((module.slurm_controller.pubsub_topic))
+          region: ((var.region))
+          slurm_cluster_name: ((var.slurm_cluster_name))
+          startup_script: |
+            #!/bin/bash
+            # reset enroot to defaults of files under /home and running under /run
+            # allows basic enroot testing on login node (reduced I/O)
+            rm -f /etc/enroot/enroot.conf
+          subnetwork_self_link: ((module.sysnet.subnetwork_self_link))
+          zone: ((var.zone))
+terraform_backend_defaults:
+  type: gcs
+  configuration:
+    bucket: geniac-tf-state-bucket
