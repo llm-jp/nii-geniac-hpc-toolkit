@@ -24,7 +24,7 @@ vars:
   deployment_name: slurm-a3-base-tky
   region: asia-northeast1
   zone: asia-northeast1-b
-  sys_net_range: 172.17.0.0/16
+  sys_net_range: 172.24.0.0/16
 #  filestore_ip_range: null  # https://github.com/GoogleCloudPlatform/hpc-toolkit/blob/b7accb0bb3b2d1300dc376073392814af1032b14/modules/file-system/filestore/README.md#inputs
 
 deployment_groups:

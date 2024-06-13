@@ -21,7 +21,7 @@ vars:
     ghpc_deployment: ((var.deployment_name))
   project_id: nii-geniac
   region: asia-northeast1
-  sys_net_range: 172.17.0.0/16
+  sys_net_range: 172.24.0.0/16
   zone: asia-northeast1-b
 deployment_groups:
   - group: primary

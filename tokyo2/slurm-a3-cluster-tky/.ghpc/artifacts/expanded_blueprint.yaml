@@ -34,7 +34,7 @@ vars:
   project_id: nii-geniac
   region: asia-northeast1
   remote_mount_homefs: /nfsshare
-  server_ip_homefs: 10.98.94.2
+  server_ip_homefs: 10.145.217.194
   slurm_cluster_name: slurm0tky
   subnetwork_name_system: (("${var.base_deployment_name}-sysnet-subnet"))
   zone: asia-northeast1-b
